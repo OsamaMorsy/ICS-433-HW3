@@ -2,11 +2,11 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define REF_STRING_LENGTH 20 // Length of the page reference string
+#define REF_STRING_LENGTH 20
 
 void generateReferenceString(int refString[], int length) {
     for (int i = 0; i < length; i++) {
-        refString[i] = rand() % 10; // Generate numbers from 0 to 9
+        refString[i] = rand() % 10;
     }
 }
 
@@ -25,13 +25,32 @@ int isInMemory(int page, int memory[], int frames) {
     return -1;
 }
 
+int findFIFOReplacement(int* fifoQueue, int frames) {
+    int victim = fifoQueue[0];
+    for (int i = 0; i < frames - 1; i++) {
+        fifoQueue[i] = fifoQueue[i + 1];
+    }
+    return victim;
+}
+
+int findLRUReplacement(int* lastUsed, int frames) {
+    int min = lastUsed[0], index = 0;
+    for (int i = 1; i < frames; i++) {
+        if (lastUsed[i] < min) {
+            min = lastUsed[i];
+            index = i;
+        }
+    }
+    return index;
+}
+
 int findOPTReplacement(int refString[], int currentIndex, int memory[], int frames, int length) {
-    int max = currentIndex;
-    int index = -1;
+    int max = -1, index = -1, found;
     for (int i = 0; i < frames; i++) {
-        int j;
-        for (j = currentIndex + 1; j < length; j++) {
-            if (refString[j] == memory[i]) {
+        found = 0;
+        for (int j = currentIndex + 1; j < length; j++) {
+            if (memory[i] == refString[j]) {
+                found = 1;
                 if (j > max) {
                     max = j;
                     index = i;
@@ -39,28 +58,17 @@ int findOPTReplacement(int refString[], int currentIndex, int memory[], int fram
                 break;
             }
         }
-        if (j == length) return i; // Not found in future, so replace this
-    }
-    return index; // Page that will not be used for the longest time
-}
-
-int findLRUReplacement(int used[], int frames) {
-    int min = used[0];
-    int index = 0;
-    for (int i = 1; i < frames; i++) {
-        if (used[i] < min) {
-            min = used[i];
-            index = i;
-        }
+        if (!found) return i;
     }
     return index;
 }
 
-void simulatePageReplacement(int refString[], int frames, int length) {
-    int memory[frames], used[frames], faults = 0, index = 0;
+void simulate(int refString[], int frames, int length, int algo) {
+    int memory[frames], lastUsed[frames], fifoQueue[frames], faults = 0, index = 0;
     for (int i = 0; i < frames; i++) {
         memory[i] = -1;
-        used[i] = 0;
+        lastUsed[i] = -1;
+        fifoQueue[i] = -1;
     }
 
     for (int i = 0; i < length; i++) {
@@ -70,20 +78,34 @@ void simulatePageReplacement(int refString[], int frames, int length) {
         if (loc == -1) { // Page fault
             if (index < frames) {
                 memory[index] = page;
-                used[index] = i; // Update recently used
+                lastUsed[index] = i;
+                fifoQueue[index] = page;
                 index++;
             } else {
-                int replacementIndex = findOPTReplacement(refString, i, memory, frames, length);
+                int replacementIndex;
+                switch (algo) {
+                    case 0: // FIFO
+                        replacementIndex = findFIFOReplacement(fifoQueue, frames);
+                        break;
+                    case 1: // LRU
+                        replacementIndex = findLRUReplacement(lastUsed, frames);
+                        break;
+                    case 2: // OPT
+                        replacementIndex = findOPTReplacement(refString, i, memory, frames, length);
+                        break;
+                    default:
+                        replacementIndex = 0;
+                }
                 memory[replacementIndex] = page;
-                used[replacementIndex] = i; // Update recently used
+                lastUsed[replacementIndex] = i;
+                fifoQueue[replacementIndex] = page;
             }
             faults++;
         } else {
-            used[loc] = i; // Update recently used
+            lastUsed[loc] = i;
         }
     }
-
-    printf("Page faults: %d\n", faults);
+    printf("Algorithm: %s, Page faults: %d\n", algo == 0 ? "FIFO" : (algo == 1 ? "LRU" : "OPT"), faults);
 }
 
 int main(int argc, char *argv[]) {
@@ -95,19 +117,14 @@ int main(int argc, char *argv[]) {
     int frames = atoi(argv[1]);
     int refString[REF_STRING_LENGTH];
 
-    srand(time(NULL)); // Seed the random number generator
+    srand(time(NULL));
 
     generateReferenceString(refString, REF_STRING_LENGTH);
     printReferenceString(refString, REF_STRING_LENGTH);
 
-    printf("FIFO Algorithm:\n");
-    simulatePageReplacement(refString, frames, REF_STRING_LENGTH);
-
-    printf("LRU Algorithm:\n");
-    simulatePageReplacement(refString, frames, REF_STRING_LENGTH);
-
-    printf("OPT Algorithm:\n");
-    simulatePageReplacement(refString, frames, REF_STRING_LENGTH);
+    simulate(refString, frames, REF_STRING_LENGTH, 0); // FIFO
+    simulate(refString, frames, REF_STRING_LENGTH, 1); // LRU
+    simulate(refString, frames, REF_STRING_LENGTH, 2); // OPT
 
     return 0;
 }
